@@ -1,84 +1,143 @@
 package com.xper.mcp.controller;
 
-
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import com.xper.mcp.tools.PoemToolExecutor;
 import org.springframework.http.MediaType;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
-import java.util.concurrent.Executors;
+import java.io.IOException;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+
 
 @RestController
 public class RootMcpSseController {
 
-    private final ObjectMapper mapper = new ObjectMapper();
+    private final PoemToolExecutor executor;
 
-    @PostMapping(
-            value = "/",
-            consumes = MediaType.APPLICATION_JSON_VALUE,
-            produces = MediaType.TEXT_EVENT_STREAM_VALUE
-    )
-    public SseEmitter rootSse(@RequestBody String body) {
-        SseEmitter emitter = new SseEmitter(5_000L);
+    public RootMcpSseController(PoemToolExecutor executor) {
+        this.executor = executor;
+    }
 
-        try {
-            JsonNode req = mapper.readTree(body);
-            String method = req.get("method").asText();
-            JsonNode idNode = req.get("id");
+    @PostMapping(path = "/", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    public SseEmitter root(@RequestBody Map<String, Object> payload) throws IOException {
 
-            String response;
+        String method = (String) payload.get("method");
 
-            switch (method) {
-                case "initialize" -> response = """
-                {
-                  "jsonrpc": "2.0",
-                  "id": %s,
-                  "result": {
-                    "protocolVersion": "2024-11-05",
-                    "capabilities": {
-                      "tools": {}
-                    },
-                    "serverInfo": {
-                      "name": "java-mcp",
-                      "version": "0.1.0"
-                    }
-                  }
-                }
-                """.formatted(idNode);
+        // 🔴 IMPORTANT: Ignore notifications completely
+        if ("notifications/initialized".equals(method)) {
+            return null; // no SSE, no response
+        }
 
-                case "tools/list" -> response = """
-                {
-                  "jsonrpc": "2.0",
-                  "id": %s,
-                  "result": {
-                    "tools": []
-                  }
-                }
-                """.formatted(idNode);
+        SseEmitter emitter = new SseEmitter(0L);
 
-                default -> response = """
-                {
-                  "jsonrpc": "2.0",
-                  "id": %s,
-                  "error": {
-                    "code": -32601,
-                    "message": "Method not found"
-                  }
-                }
-                """.formatted(idNode);
-            }
-
-            emitter.send(SseEmitter.event()
-                    .name("message")
-                    .data(response));
-
-            emitter.complete();
-            return emitter;
-
-        } catch (Exception e) {
-            emitter.completeWithError(e);
+        if ("initialize".equals(method)) {
+            sendInitialize(payload, emitter);
             return emitter;
         }
+        if ("tools/list".equals(method)) {
+            emitter.send(
+                    SseEmitter.event()
+                            .name("message")
+                            .data(Map.of(
+                                    "jsonrpc", "2.0",
+                                    "id", payload.get("id"),
+                                    "result", Map.of(
+                                            "tools", toolsDefinition()
+                                    )
+                            ))
+            );
+            return emitter;
+        }
+
+
+        CompletableFuture.runAsync(() -> handleAsync(payload, emitter));
+        return emitter;
     }
+
+    private void sendInitialize(Map<String, Object> payload, SseEmitter emitter) {
+        try {
+            emitter.send(
+                    SseEmitter.event()
+                            .name("message")
+                            .data(Map.of(
+                                    "jsonrpc", "2.0",
+                                    "id", payload.get("id"),
+                                    "result", Map.of(
+                                            "protocolVersion", "2025-06-18",
+                                            "capabilities", Map.of(
+                                                    "tools", Map.of()
+                                            ),
+                                            "serverInfo", Map.of(
+                                                    "name", "java-mcp",
+                                                    "version", "1.0.0"
+                                            ),
+                                            "tools", toolsDefinition()
+                                    )
+                            ))
+            );
+        } catch (Exception e) {
+            emitter.completeWithError(e);
+        }
+    }
+
+
+    private void handleAsync(Map<String, Object> payload, SseEmitter emitter) {
+        try {
+            Map<String, Object> response = executor.execute(payload);
+
+            emitter.send(
+                    SseEmitter.event()
+                            .name("message")
+                            .data(response)
+            );
+        } catch (Exception e) {
+            try {
+                emitter.send(
+                        SseEmitter.event()
+                                .name("message")
+                                .data(Map.of(
+                                        "jsonrpc", "2.0",
+                                        "id", payload.get("id"),
+                                        "error", Map.of(
+                                                "code", -32603,
+                                                "message", e.getMessage()
+                                        )
+                                ))
+                );
+            } catch (Exception ignored) {
+            }
+        }
+    }
+    private List<Map<String, Object>> toolsDefinition() {
+        return List.of(
+                Map.of(
+                        "name", "get_all_poems",
+                        "description", "Get all poems",
+                        "inputSchema", Map.of(
+                                "type", "object",
+                                "properties", Map.of(),
+                                "required", List.of()
+                        )
+                ),
+                Map.of(
+                        "name", "get_poem_by_title",
+                        "description", "Get a poem by its title",
+                        "inputSchema", Map.of(
+                                "type", "object",
+                                "properties", Map.of(
+                                        "title", Map.of(
+                                                "type", "string",
+                                                "description", "Title of the poem"
+                                        )
+                                ),
+                                "required", List.of("title")
+                        )
+                )
+        );
+    }
+
 }
