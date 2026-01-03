@@ -27,6 +27,7 @@ public class PoemToolHandler {
         return switch (toolName) {
             case "get_all_poems" -> getAllPoems();
             case "get_poem_by_title" -> getPoemByTitle(arguments);
+            case "add_poem" -> addPoem(arguments);
             default -> throw new IllegalArgumentException("Unknown tool: " + toolName);
         };
     }
@@ -57,6 +58,25 @@ public class PoemToolHandler {
                 Map.of(
                         "type", "text",
                         "text", "Title: " + poem.getTitle() + "\n\n" + poem.getContent()
+                )
+        );
+    }
+
+    private List<Map<String, Object>> addPoem(Map<String, Object> arguments) {
+
+        String title = (String) arguments.get("title");
+        String content = (String) arguments.get("content");
+
+        Poem poem = new Poem();
+        poem.setTitle(title);
+        poem.setContent(content);
+
+        Poem addedPoem = client.addPoem(poem);
+
+        return List.of(
+                Map.of(
+                        "type", "text",
+                        "text", "Added Poem:\nTitle: " + addedPoem.getTitle() + "\n\n" + addedPoem.getContent()
                 )
         );
     }

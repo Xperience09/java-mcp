@@ -136,6 +136,24 @@ public class RootMcpSseController {
                                 ),
                                 "required", List.of("title")
                         )
+                ),
+                Map.of(
+                        "name", "add_poem",
+                        "description", "Add a new poem",
+                        "inputSchema", Map.of(
+                                "type", "object",
+                                "properties", Map.of(
+                                        "title", Map.of(
+                                                "type", "string",
+                                                "description", "Title of the poem"
+                                        ),
+                                        "content", Map.of(
+                                                "type", "string",
+                                                "description", "Content of the poem"
+                                        )
+                                ),
+                                "required", List.of("title", "content")
+                        )
                 )
         );
     }

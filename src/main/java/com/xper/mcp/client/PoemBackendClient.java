@@ -38,4 +38,15 @@ public class PoemBackendClient {
                 .bodyToMono(Poem.class)
                 .block();
     }
+
+    public Poem addPoem(Poem poem){
+        return webClient
+                .post()
+                .uri("/Poem/add")
+                .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+                .bodyValue(poem)
+                .retrieve()
+                .bodyToMono(Poem.class)
+                .block();
+    }
 }
